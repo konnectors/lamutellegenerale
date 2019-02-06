@@ -6,7 +6,6 @@ const {
   BaseKonnector,
   requestFactory,
   signin,
-  scrape,
   saveBills,
   log
 } = require('cozy-konnector-libs')
