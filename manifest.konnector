@@ -1,14 +1,14 @@
 {
   "version": "1.0.0",
-  "name": "Connector template",
+  "name": "La mutuelle générale",
   "type": "konnector",
   "language": "node",
   "icon": "icon.png",
-  "slug": "template",
-  "source": "git://github.com/konnectors/cozy-konnector-template.git",
+  "slug": "lamutuellegenerale",
+  "source": "git://github.com/konnectors/lamutuellegenerale.git",
   "editor": "Cozy",
-  "vendor_link": "Link to the target website",
-  "categories": ["other"],
+  "vendor_link": "https://mon-espace-adherent.lamutuellegenerale.fr",
+  "categories": ["insurance"],
   "fields": {
     "login": {
       "type": "text"
