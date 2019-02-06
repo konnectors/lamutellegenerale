@@ -116,7 +116,13 @@ async function parseBills($) {
             version: 1
           }
         }
-        bills.push(bill)
+        // Temporary delete current month bills because of unkown pdf management on website
+        if (bill.metadata.importDate.getMonth() === bill.date.getMonth() &&
+            bill.metadata.importDate.getFullYear() === bill.date.getFullYear()) {
+          log('info', `Forget a bill of the current month`)
+        } else {
+          bills.push(bill)
+        }
       }
     }
   }
