@@ -93,7 +93,7 @@ async function parseBills($) {
                                        .replace('€', '').replace(',', '.').trim())
         const filename = date.getFullYear()
                            + '-' + ('0' + (date.getMonth() + 1)).slice(-2)
-                           + '_lamutuellegenerale_'
+                           + '_lamutuellegenerale'
                            + '.pdf'
         const bill = {
           fileurl: currentPDF,
