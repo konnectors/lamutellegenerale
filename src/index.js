@@ -64,12 +64,12 @@ async function parseBills($) {
       currentPDF = baseUrl + $line.find('a').attr('href').split(`'`)[1]
     } else if ($line.hasClass('alt2')) {
       log('debug', `Found a payment line, getting details and making bill`)
-      const beneficiary = $line.find('.col-xs-12').text()
+      const beneficiary = $line.find('.decomptesCell').eq(0).text()
       const date = parseDate(
-        $line.find('.col-xs-7').text().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)[0])
-      const isThirdPartyPayer = Boolean($line.find('.col-xs-7').text()
+        $line.find('.decomptesCell').eq(1).text().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)[0])
+      const isThirdPartyPayer = Boolean($line.find('.decomptesCell').eq(1).text()
                                         .match('aux professionnels de santé'))
-      const amount = parseFloat($line.find('.col-xs-3').text()
+      const amount = parseFloat($line.find('.col-montant-total').text()
                                 .replace('€', '').replace(',', '.').trim())
 
       // Getting more details through an ajax request on website
