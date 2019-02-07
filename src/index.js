@@ -72,7 +72,7 @@ async function parseBills($) {
         $line.find('.decomptesCell').eq(1).text().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)[0])
       const isThirdPartyPayer = Boolean($line.find('.decomptesCell').eq(1).text()
                                         .match('aux professionnels de santé'))
-      const amount = parseFloat($line.find('.col-montant-total').text()
+      const groupAmount = parseFloat($line.find('.col-montant-total').text()
                                 .replace('€', '').replace(',', '.').trim())
 
       // Getting more details through an ajax request on website
@@ -91,7 +91,7 @@ async function parseBills($) {
         const socialSecurityRefund = parseFloat($detailsLine.find('.col-montant').eq(1)
                                        .find('.decomptesValeur').text()
                                        .replace('€', '').replace(',', '.').trim())
-        const groupAmount = parseFloat($detailsLine.find('.col-montantmutuelle')
+        const amount = parseFloat($detailsLine.find('.col-montantmutuelle')
                                        .find('.decomptesValeur').text()
                                        .replace('€', '').replace(',', '.').trim())
         const filename = date.getFullYear()
@@ -103,12 +103,12 @@ async function parseBills($) {
           beneficiary,
           date: date,
           isThirdPartyPayer,
-          amount,
+          groupAmount,
           originalDate: parseDate(originalDate),
           subtype,
           originalAmount,
           socialSecurityRefund,
-          groupAmount,
+          amount,
           filename,
           vendor: 'lamutuellegenerale',
           type: 'health_costs',
@@ -122,7 +122,7 @@ async function parseBills($) {
         // Temporary delete current month bills because of unkown pdf management on website
         if (bill.metadata.importDate.getMonth() === bill.date.getMonth() &&
             bill.metadata.importDate.getFullYear() === bill.date.getFullYear()) {
-          log('info', `Forget a bill of the current month`)
+          log('info', `Forget one bill of the current month`)
         } else {
           bills.push(bill)
         }
