@@ -3,7 +3,7 @@
   "name": "La mutuelle générale",
   "type": "konnector",
   "language": "node",
-  "icon": "icon.png",
+  "icon": "icon.jpeg",
   "slug": "lamutuellegenerale",
   "source": "git://github.com/konnectors/lamutuellegenerale.git",
   "editor": "Cozy",
@@ -49,7 +49,7 @@
   "langs": ["fr", "en"],
   "locales": {
     "fr": {
-      "short_description": "Template de connecteur",
+      "short_description": "todo",
       "long_description": "Ce template récupère une liste de livres sur un site de scraping",
       "permissions": {
         "bank operations": {
