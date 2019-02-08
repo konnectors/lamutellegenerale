@@ -85,6 +85,6 @@
       }
     }
   },
-  "banksTransactionRegExp": "\\bbooks\\b",
+  "banksTransactionRegExp": "\\bla mutuelle gen",
   "manifest_version": "2"
 }
