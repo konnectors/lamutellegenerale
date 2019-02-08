@@ -89,11 +89,13 @@ async function parseBills($) {
                                        .find('.decomptesValeur').text()
                                        .replace('€', '').replace(',', '.').trim())
         const socialSecurityRefund = parseFloat($detailsLine.find('.col-montant').eq(1)
-                                       .find('.decomptesValeur').text()
-                                       .replace('€', '').replace(',', '.').trim())
+                                                .find('.decomptesValeur').text()
+                                                .replace('€', '').replace(',', '.').trim())
+              ||0 //default if no number
         const amount = parseFloat($detailsLine.find('.col-montantmutuelle')
-                                       .find('.decomptesValeur').text()
-                                       .replace('€', '').replace(',', '.').trim())
+                                  .find('.decomptesValeur').text()
+                                  .replace('€', '').replace(',', '.').trim())
+              ||0 //default if no number
         const filename = date.getFullYear()
                            + '-' + ('0' + (date.getMonth() + 1)).slice(-2)
                            + '_lamutuellegenerale'
