@@ -10,7 +10,7 @@ const {
   log
 } = require('cozy-konnector-libs')
 const request = requestFactory({
-//  debug: true,
+  //  debug: true,
   cheerio: true,
   json: false,
   jar: true
@@ -26,7 +26,9 @@ async function start(fields) {
   log('info', 'Successfully logged in')
 
   log('info', 'Fetching the list of documents')
-  const $ = await request(`${baseUrl}/EspaceAdherentWebApp/MesDecomptes/Accueil`)
+  const $ = await request(
+    `${baseUrl}/EspaceAdherentWebApp/MesDecomptes/Accueil`
+  )
 
   log('info', 'Parsing list of bills')
   const documents = await parseBills($)
@@ -43,8 +45,10 @@ function authenticate(username, password) {
     formSelector: 'form',
     formData: { Login: username, MotDePasse: password },
     validate: (statusCode, $, fullResponse) => {
-      if (statusCode === 200 &&
-          fullResponse.request.uri.href === `${baseUrl}/EspaceAdherentWebApp/`) {
+      if (
+        statusCode === 200 &&
+        fullResponse.request.uri.href === `${baseUrl}/EspaceAdherentWebApp/`
+      ) {
         return true
       } else {
         return false
@@ -64,42 +68,94 @@ async function parseBills($) {
     if ($line.hasClass('alt1')) {
       log('debug', `Found a month summary line, saving pdf link`)
       // Extract url part between quotes in href
-      currentPDF = baseUrl + $line.find('a').attr('href').split(`'`)[1]
+      currentPDF =
+        baseUrl +
+        $line
+          .find('a')
+          .attr('href')
+          .split(`'`)[1]
     } else if ($line.hasClass('alt2')) {
       log('debug', `Found a payment line, getting details and making bill`)
-      const beneficiary = $line.find('.decomptesCell').eq(0).text()
+      const beneficiary = $line
+        .find('.decomptesCell')
+        .eq(0)
+        .text()
       const date = parseDate(
-        $line.find('.decomptesCell').eq(1).text().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)[0])
-      const isThirdPartyPayer = Boolean($line.find('.decomptesCell').eq(1).text()
-                                        .match('aux professionnels de santé'))
-      const groupAmount = parseFloat($line.find('.col-montant-total').text()
-                                .replace('€', '').replace(',', '.').trim())
+        $line
+          .find('.decomptesCell')
+          .eq(1)
+          .text()
+          .match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)[0]
+      )
+      const isThirdPartyPayer = Boolean(
+        $line
+          .find('.decomptesCell')
+          .eq(1)
+          .text()
+          .match('aux professionnels de santé')
+      )
+      const groupAmount = parseFloat(
+        $line
+          .find('.col-montant-total')
+          .text()
+          .replace('€', '')
+          .replace(',', '.')
+          .trim()
+      )
 
       // Getting more details through an ajax request on website
       const detailsLink = baseUrl + $line.find('a').attr('href')
-      const $details =  await request(detailsLink)
+      const $details = await request(detailsLink)
 
       // Loop on each bill in details
       const detailsLines = Array.from($details('.decomptesRow.alt2'))
       for (let detailsLine of detailsLines) {
         const $detailsLine = $details(detailsLine)
-        const originalDate = $detailsLine.find('.col-date .decomptesValeur').text().trim()
-        const subtype = $detailsLine.find('.col-natprest .decomptesValeur').text().trim()
-        const originalAmount = parseFloat($detailsLine.find('.col-montant').eq(0)
-                                       .find('.decomptesValeur').text()
-                                       .replace('€', '').replace(',', '.').trim())
-        const socialSecurityRefund = parseFloat($detailsLine.find('.col-montant').eq(1)
-                                                .find('.decomptesValeur').text()
-                                                .replace('€', '').replace(',', '.').trim())
-              ||0 //default if no number
-        const amount = parseFloat($detailsLine.find('.col-montantmutuelle')
-                                  .find('.decomptesValeur').text()
-                                  .replace('€', '').replace(',', '.').trim())
-              ||0 //default if no number
-        const filename = date.getFullYear()
-                           + '-' + ('0' + (date.getMonth() + 1)).slice(-2)
-                           + '_lamutuellegenerale'
-                           + '.pdf'
+        const originalDate = $detailsLine
+          .find('.col-date .decomptesValeur')
+          .text()
+          .trim()
+        const subtype = $detailsLine
+          .find('.col-natprest .decomptesValeur')
+          .text()
+          .trim()
+        const originalAmount = parseFloat(
+          $detailsLine
+            .find('.col-montant')
+            .eq(0)
+            .find('.decomptesValeur')
+            .text()
+            .replace('€', '')
+            .replace(',', '.')
+            .trim()
+        )
+        const socialSecurityRefund =
+          parseFloat(
+            $detailsLine
+              .find('.col-montant')
+              .eq(1)
+              .find('.decomptesValeur')
+              .text()
+              .replace('€', '')
+              .replace(',', '.')
+              .trim()
+          ) || 0 //default if no number
+        const amount =
+          parseFloat(
+            $detailsLine
+              .find('.col-montantmutuelle')
+              .find('.decomptesValeur')
+              .text()
+              .replace('€', '')
+              .replace(',', '.')
+              .trim()
+          ) || 0 //default if no number
+        const filename =
+          date.getFullYear() +
+          '-' +
+          ('0' + (date.getMonth() + 1)).slice(-2) +
+          '_lamutuellegenerale' +
+          '.pdf'
         const bill = {
           fileurl: currentPDF,
           beneficiary,
@@ -116,14 +172,16 @@ async function parseBills($) {
           type: 'health_costs',
           currency: '€',
           isRefund: true,
-          metadata : {
+          metadata: {
             importDate: new Date(),
             version: 1
           }
         }
         // Temporary delete current month bills because of unkown pdf management on website
-        if (bill.metadata.importDate.getMonth() === bill.date.getMonth() &&
-            bill.metadata.importDate.getFullYear() === bill.date.getFullYear()) {
+        if (
+          bill.metadata.importDate.getMonth() === bill.date.getMonth() &&
+          bill.metadata.importDate.getFullYear() === bill.date.getFullYear()
+        ) {
           log('info', `Forget one bill of the current month`)
         } else {
           bills.push(bill)
