@@ -100,6 +100,7 @@ async function parseBills($) {
           .text()
           .replace('€', '')
           .replace(',', '.')
+          .replace(/ /g, '')
           .trim()
       )
 
@@ -127,6 +128,7 @@ async function parseBills($) {
             .text()
             .replace('€', '')
             .replace(',', '.')
+            .replace(/ /g, '')
             .trim()
         )
         const socialSecurityRefund =
@@ -148,6 +150,7 @@ async function parseBills($) {
               .text()
               .replace('€', '')
               .replace(',', '.')
+              .replace(/ /g, '')
               .trim()
           ) || 0 //default if no number
         const filename =
