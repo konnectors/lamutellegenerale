@@ -35,7 +35,7 @@ async function start(fields) {
 
   log('info', 'Saving data to Cozy')
   await saveBills(documents, fields, {
-    identifiers: ['books']
+    identifiers: ['la mutuelle gen']
   })
 }
 
