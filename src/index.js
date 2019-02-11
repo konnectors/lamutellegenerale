@@ -159,7 +159,7 @@ async function parseBills($) {
           ('0' + (date.getMonth() + 1)).slice(-2) +
           '_lamutuellegenerale' +
           '.pdf'
-        const bill = {
+        let bill = {
           fileurl: currentPDF,
           beneficiary,
           date: date,
@@ -180,15 +180,18 @@ async function parseBills($) {
             version: 1
           }
         }
-        // Temporary delete current month bills because of unkown pdf management on website
+        // If bill of current month, can be regenerated, so we force update
         if (
           bill.metadata.importDate.getMonth() === bill.date.getMonth() &&
           bill.metadata.importDate.getFullYear() === bill.date.getFullYear()
         ) {
-          log('info', `Forget one bill of the current month`)
-        } else {
-          bills.push(bill)
+          log('info', `One bill of the current month, adding for replace`)
+          bill = {
+            ...bill,
+            shouldUpdateFile: () => true
+          }
         }
+        bills.push(bill)
       }
     }
   }
