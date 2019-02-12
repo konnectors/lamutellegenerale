@@ -1,6 +1,6 @@
 {
   "name": "cozy-konnector-lamutuellegenerale",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "",
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
     "travisDeployKey": "./bin/generate_travis_deploy_key"
   },
   "dependencies": {
-    "cozy-konnector-libs": "4.14.4"
+    "cozy-konnector-libs": "4.14.3"
   },
   "devDependencies": {
     "copy-webpack-plugin": "4.6.0",
