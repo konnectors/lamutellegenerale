@@ -49,8 +49,8 @@
   "langs": ["fr", "en"],
   "locales": {
     "fr": {
-      "short_description": "Récupère vos relevés de remboursement",
-      "long_description": "Récupère les relévés de remboursement de votre assurance santé complémentaire.\n\nA noter : Vous devez avoir souscrit au service décompte en ligne.",
+      "short_description": "Récupère vos relevés de remboursements",
+      "long_description": "Récupère les relévés de remboursements mensuels de votre assurance santé complémentaire.\n\nA noter : Vous devez avoir souscrit au service décompte en ligne.",
       "permissions": {
         "bank operations": {
           "description": "Utilisé pour relier les factures à des operations bancaires"
@@ -68,7 +68,7 @@
     },
     "en": {
       "short_description": "Fetch your reimbursment statement",
-      "long_description": "Fetches your reimbursement statements for your complementary health insurance.\n\nNote : You must have subscribed to the pdf bills service.",
+      "long_description": "Fetches your monthly reimbursement statements for your complementary health insurance.\n\nNote : You must have subscribed to the pdf bills service.",
       "permissions": {
         "bank operations": {
           "description": "Required to link bank operations to bills"
