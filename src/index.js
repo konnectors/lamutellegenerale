@@ -188,7 +188,7 @@ async function parseBills($) {
           log('info', `One bill of the current month, adding for replace`)
           bill = {
             ...bill,
-            shouldUpdateFile: () => true
+            shouldReplaceFile: () => true
           }
         }
         bills.push(bill)
