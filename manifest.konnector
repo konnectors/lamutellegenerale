@@ -5,7 +5,7 @@
   "language": "node",
   "icon": "icon.jpeg",
   "slug": "lamutuellegenerale",
-  "source": "git://github.com/konnectors/lamutuellegenerale.git",
+  "source": "git@github.com:konnectors/lamutuellegenerale.git",
   "editor": "Cozy",
   "vendor_link": "https://mon-espace-adherent.lamutuellegenerale.fr",
   "categories": [
