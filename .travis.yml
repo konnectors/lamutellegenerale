@@ -3,10 +3,10 @@ node_js:
 - '8'
 env:
   global:
-  - GH_USER_EMAIL="travis@example.org"
-  - GH_USER_NAME="cozy-bot"
+  - MATTERMOST_CHANNEL=teamconnecteurs
   - DEPLOY_REPOSITORY="git@github.com:konnectors/lamutuellegenerale.git"
   - secure: BzFrNjVCt200CpE7I48nZxkuazvaXZYdLQFSpj4iAZCXUfyGCq4nyH2bwVw7QLLvkkk761l56Vo+dANnnoM58OzcgID7c7J2uAvFUvBA4qcQLhAs22BJRqE/WIqcFh/lJdAVaxsPOLdkTIk6xb9CLGQ2XnBDX+gXuHe6flyetUSr+HAuinnUL66+fcDtFYohwfzRZpyCV3ewGsTjxCzhYboOFmFt2OPb8BPW0s0z/nWB4z5gFFxqGXp5eyEejI1u6BD1L8wlFN6u/ipto7oIBvsMNf8pHAIPzKv6VFuiqMFORlDTJerDX4RCfRwklupQMJLztLWecjdLW+nFrAdQejgqpyTYxwsVmPF+F/BSPmvZGgvfHKEpnMa9ZFXr68AAeCopEFfdFq58kOWxlujk3PWSbT+vsrCzpQzoSKuE2wA3bfloazzkfcBycEBkwTYB44YEemjCb6EwFpyPOtmVSyeqkuvUoV18hTJdwEkWTjqf5QaP/joMa3Ei/OTG2P8SRANat+YlnnssKTczFXeqDuir1aXTQEYPAsekRiDcuAjGxCbCDSvokEX/6YFtJEQxqhr0Nes/N79EyBrvtMpRV3USREZVkR6agamHvaU4qs5QQ2zGn1hJq2lW2U1iBlONLoeM64CPmkB+0tpl1HfEdETycF8pEHT5tysbFpuMHJE=
+  - secure: jjURKOeYfRrZX7Y54ez3kEFYQsXFoHTWf1txB9dK0s6t8BCdS6ibJlbS0AagTWeGhOuYTR8NdUDvUSCBl8Pa39K9BCWgseULWfuoxa7OSNSBXAUY3lF6mZdW720aon5Puqu2O5oe2w2eeXR2BsgrTmqPnNrSr2WsLVwdwBrGo/9kLZzsAU3ue2dhrTSokQWGUKhBfqIWQ9cfOuBusATm0FHeJrfqj6Gfp+iXp/mNMb5U4cRF54qcfetDhqKYWcufMQpKzuzVPoqxIUsXYmVCeMTdcOJ/3CMXoagrlQg244L2ovmsaUOs83z94gvsGQbmP5BFt9OxvaUXyKtRUmwbyXcWkMKfnGDkRuXkynYXbNc5lFXWsOL9y0Pa6awUMbbJ9qrCwnpSvM4pLMLeKhQ4NnLVXYreAsyjXhkqi/w6opGBgEt+8C2ofV9DDgRwPYZ3H4Mk0iW3N210CxxGtcNrDlaJPwL72XsRrcQgpvlYQVCyBfSbqI8arusQ9VHgqdas5uH8F5w1iYUSQDnhmqkhzM1W4WRtBonHcJiW1Frs9EMJCV7TXOn8YgmJ9KpakM8fXCaC8nzx/369qhyqm5hfMBpTWpja9XC0ISXMX4fc+I/SkeWiASxwvV7KdD7MwpC/tO2ZlAFePenF8M66aSnIdjMY9/q8ca+bOoYlF6IcefY=
 cache:
   yarn: true
   directories:
@@ -16,9 +16,12 @@ branches:
   - build
   - build-debug
 script:
+- echo 'Linting' && echo -en 'travis_fold:start:lint\\r'
 - yarn lint
+- echo -en 'travis_fold:end:lint\\r'
+- echo 'Building' && echo -en 'travis_fold:start:build\\r'
 - yarn build
-- yarn run check
+- echo -en 'travis_fold:end:build\\r'
 deploy:
 - provider: script
   skip-cleanup: true
@@ -27,7 +30,7 @@ deploy:
     branch: master
 - provider: script
   skip-cleanup: true
-  script: DEPLOY_BRANCH=build yarn deploy && yarn cozyPublish
+  script: DEPLOY_BRANCH=build yarn deploy && yarn cozyPublish --postpublish mattermost
   on:
     tags: true
 before_install:
