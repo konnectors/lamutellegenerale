@@ -254,7 +254,7 @@ async function getIdentity() {
     postcode: identity['Code postal'],
     city: identity['Ville']
   }
-  address.unformattedAddress = `${address.street} ${address.postcode} ${
+  address.formatedAddress = `${address.street} ${address.postcode} ${
     address.city
   }`
   address = [address]
