@@ -7,7 +7,8 @@ const {
   requestFactory,
   signin,
   saveBills,
-  log
+  log,
+  scrape
 } = require('cozy-konnector-libs')
 const request = requestFactory({
   //  debug: true,
@@ -24,6 +25,9 @@ async function start(fields) {
   log('info', 'Authenticating ...')
   await authenticate(fields.login, fields.password)
   log('info', 'Successfully logged in')
+
+  const identity = await getIdentity()
+  await this.saveIdentity(identity, fields.login)
 
   log('info', 'Fetching the list of documents')
   const $ = await request(
@@ -193,6 +197,84 @@ async function parseBills($) {
     }
   }
   return bills
+}
+
+async function getIdentity() {
+  const $ = await request(
+    `${baseUrl}/EspaceAdherentWebApp/MonCompte/MesDonneesPersonnelles`
+  )
+
+  const identityArray = scrape(
+    $,
+    {
+      key: 'label[for]',
+      value: {
+        sel: '.form_input',
+        fn: el => {
+          const $input = $(el).find('input')
+          if ($input.length) {
+            return $input.val().trim()
+          } else
+            return $(el)
+              .text()
+              .trim()
+        }
+      }
+    },
+    '.informations .form_line'
+  )
+  const identity = identityArray.reduce(
+    (memo, doc) => ({ ...memo, [doc.key.replace(':', '').trim()]: doc.value }),
+    {}
+  )
+
+  const phone = []
+  if (identity['Téléphone domicile']) {
+    phone.push({
+      type: 'home',
+      number: identity['Téléphone domicile']
+    })
+  }
+
+  if (identity['Téléphone portable']) {
+    phone.push({
+      type: 'mobile',
+      number: identity['Téléphone portable']
+    })
+  }
+
+  const emailDoc = identityArray.find(doc => doc.key === '')
+  let email = null
+  if (emailDoc && emailDoc.value && emailDoc.value.includes('@')) {
+    email = [{ address: emailDoc.value }]
+  }
+
+  let address = {
+    street: identity['Adresse'].replace(/\s+/g, ' '),
+    postcode: identity['Code postal'],
+    city: identity['Ville']
+  }
+  address.unformattedAddress = `${address.street} ${address.postcode} ${
+    address.city
+  }`
+  address = [address]
+
+  const contact = {
+    name: {
+      givenName: identity.Prénom,
+      familyName: identity.Nom
+    },
+    socialSecurityNumber: identity['N° de SS'].replace(/\s/g, ''),
+    birthday: identity['Date de naissance']
+      .split('/')
+      .reverse()
+      .join('-'),
+    phone,
+    address,
+    email
+  }
+
+  return contact
 }
 
 // Convert a french date to Date object
