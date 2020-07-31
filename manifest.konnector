@@ -101,6 +101,10 @@
       }
     }
   },
+  "features": [
+    "IDENTITY",
+    "HEALTH"
+  ],
   "banksTransactionRegExp": "\\bla mutuelle gen",
   "manifest_version": "2"
 }
