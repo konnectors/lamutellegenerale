@@ -1,13 +1,18 @@
 import { ContentScript } from 'cozy-clisk/dist/contentscript'
 import Minilog from '@cozy/minilog'
 import waitFor from 'p-wait-for'
+import { parse, format } from 'date-fns'
+import { fr } from 'date-fns/locale'
 const log = Minilog('ContentScript')
 Minilog.enable('lamutuellegeneraleCCC')
 
-const baseUrl = 'https://www.lamutuellegenerale.fr/'
+// const baseUrl = 'https://www.lamutuellegenerale.fr/'
 const loginFormUrl = 'https://adherent.lamutuellegenerale.fr/'
 
 const personnalInfos = []
+const foundBills = []
+const foundBillsDetails = []
+const base64Pdfs = []
 var openProxied = window.XMLHttpRequest.prototype.open
 window.XMLHttpRequest.prototype.open = function () {
   var originalResponse = this
@@ -16,6 +21,34 @@ window.XMLHttpRequest.prototype.open = function () {
       if (originalResponse.readyState === 4) {
         const jsonInfos = JSON.parse(originalResponse.responseText)
         personnalInfos.push(jsonInfos)
+      }
+    })
+    return openProxied.apply(this, [].slice.call(arguments))
+  }
+  if (arguments[1].includes('/mesremboursements/?debutPeriode')) {
+    originalResponse.addEventListener('readystatechange', function () {
+      if (originalResponse.readyState === 4) {
+        const jsonBills = JSON.parse(originalResponse.responseText)
+        foundBills.push(jsonBills)
+      }
+    })
+    return openProxied.apply(this, [].slice.call(arguments))
+  }
+  // eslint-disable-next-line no-useless-escape, prettier/prettier
+  if (arguments[1].match(/\/mesremboursements\/\d+/g)) {
+    originalResponse.addEventListener('readystatechange', function () {
+      if (originalResponse.readyState === 4) {
+        const jsonDetails = JSON.parse(originalResponse.responseText)
+        foundBillsDetails.push(jsonDetails)
+      }
+    })
+    return openProxied.apply(this, [].slice.call(arguments))
+  }
+  if (arguments[1].includes('/mesremboursements/edition?debutPeriode=')) {
+    originalResponse.addEventListener('readystatechange', function () {
+      if (originalResponse.readyState === 4) {
+        const base64 = JSON.parse(originalResponse.responseText)
+        base64Pdfs.push(base64.edition)
       }
     })
     return openProxied.apply(this, [].slice.call(arguments))
@@ -123,7 +156,10 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
     if (!authenticated) {
       return true
     }
-    return true
+    await this.clickAndWait(
+      'a[analyticsbuttonlabel="Déconnexion"]',
+      '#password'
+    )
   }
 
   async checkAuthenticated() {
@@ -164,7 +200,49 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
 
   async fetch(context) {
     this.log('info', '🤖 fetch')
-    await this.waitForElementInWorker('[pause]')
+    await this.clickAndWait(
+      'a[href="/remboursements"]',
+      'app-refunds-list-block'
+    )
+    await this.runInWorkerUntilTrue({
+      method: 'checkInterceptions',
+      args: ['bills']
+    })
+    const numberOfMonths = await this.evaluateInWorker(
+      function getNumberOfMonths() {
+        const numberfMonthsBlocks = document.querySelectorAll(
+          'app-refunds-list-block'
+        ).length
+        return numberfMonthsBlocks
+      }
+    )
+    for (let i = 0; i < numberOfMonths; i++) {
+      const { monthReimbursments, dataUri } = await this.runInWorker(
+        'findReimbursments',
+        i
+      )
+      for (const monthReimbursment of monthReimbursments) {
+        const { detailedData, acts, sharedFileInfos } = await this.runInWorker(
+          'getDetails',
+          monthReimbursment,
+          dataUri
+        )
+        for (let i = 0; i < acts.length; i++) {
+          const oneBill = await this.runInWorker(
+            'getBill',
+            detailedData,
+            sharedFileInfos,
+            i
+          )
+          await this.saveBills([oneBill], {
+            context,
+            contentType: 'application/pdf',
+            fileIdAttributes: ['filename', 'fileurl'],
+            qualificationLabel: 'health_invoice'
+          })
+        }
+      }
+    }
   }
 
   async checkInterceptions(option) {
@@ -175,7 +253,13 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
           return Boolean(personnalInfos.length > 0)
         }
         if (option === 'bills') {
-          return Boolean(reimbursments.length > 0)
+          return Boolean(foundBills.length > 0)
+        }
+        if (option === 'details') {
+          return Boolean(foundBillsDetails.length > 0)
+        }
+        if (option === 'pdf') {
+          return Boolean(base64Pdfs.length > 0)
         }
       },
       {
@@ -183,7 +267,7 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
         timeout: 30 * 1000
       }
     )
-    this.log('info', `Intercetpion for ${option} - OK`)
+    this.log('info', `Interception for ${option} - OK`)
     return true
   }
 
@@ -291,12 +375,115 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
     }
     return phone
   }
+
+  async findReimbursments(i) {
+    this.log('info', '📍️ findReimbursments starts')
+    const billsInfos = foundBills[0].remboursements
+    const monthBlocks = document.querySelectorAll('app-refunds-list-block')
+    let monthReimbursments = this.getMonthReimbursments(
+      monthBlocks[i],
+      billsInfos
+    )
+    monthBlocks[i]
+      .querySelector('.app-refund-block__title-download-button')
+      .click()
+    await this.checkInterceptions('pdf')
+    const dataUri = `data:application/pdf;base64,${base64Pdfs[0]}`
+    // Resetting this array to ensure the next interception will be the first in the array
+    base64Pdfs.length = 0
+    return { monthReimbursments, dataUri }
+  }
+
+  async getDetails(monthReimbursment, dataUri) {
+    this.log('info', '📍️ getDetails starts')
+    document
+      .querySelector(`div[id="${monthReimbursment.id}"]`)
+      .querySelector('.icon-chevron-remboursement')
+      .click()
+    await this.checkInterceptions('details')
+    const detailedData = {
+      sharedActsInfos: { ...monthReimbursment },
+      ...foundBillsDetails[0].remboursement
+    }
+    // Resetting this array to ensure the next interception will be the first in the array
+    foundBillsDetails.length = 0
+    const acts = detailedData.actes
+    const careDate = detailedData.sharedActsInfos.dateSoin
+    const filename = `${careDate.substring(
+      0,
+      7
+    )}_ReleveMensuel_LaMutuelleGenerale.pdf`
+    const sharedFileInfos = {
+      dataUri,
+      filename
+    }
+    return { detailedData, acts, sharedFileInfos }
+  }
+
+  async getBill(detailedData, sharedFileInfos, i) {
+    this.log('info', '📍️ getBill starts')
+    const oneBill = {
+      dataUri: sharedFileInfos.dataUri,
+      vendorRef: `${detailedData.id}_${i}`,
+      beneficiary: `${detailedData.sharedActsInfos.prenomAssure} ${detailedData.sharedActsInfos.nomAssure}`,
+      date: new Date(detailedData.sharedActsInfos.datePaiement),
+      isThirdPartyPayer: detailedData.tiersPayant,
+      groupAmount: detailedData.montantVerseLMG,
+      originalDate: new Date(detailedData.sharedActsInfos.dateSoin),
+      subtype: detailedData.sharedActsInfos.categorieSoin,
+      originalAmount: detailedData.actes[i].montantPaye,
+      socialSecurityRefund: detailedData.actes[i].montantVerseRO,
+      amount: detailedData.actes[i].montantVerseLMG,
+      filename: sharedFileInfos.filename,
+      vendor: 'lamutuellegenerale',
+      type: 'health_costs',
+      currency: '€',
+      isRefund: true,
+      fileAttributes: {
+        metadata: {
+          contentAuthor: 'lamutuellegenerale.fr',
+          issueDate: new Date(),
+          datetime: new Date(detailedData.sharedActsInfos.datePaiement),
+          datetimeLabel: 'issueDate',
+          carbonCopy: true
+        }
+      }
+    }
+    this.log('info', `oneBill : ${JSON.stringify(oneBill)}`)
+
+    return oneBill
+  }
+
+  getMonthReimbursments(element, billsInfos) {
+    this.log('info', '📍️ getMonthReimbursments starts')
+    const monthReimbursments = []
+    const currentMonth = element
+      .querySelector('.app-refund-block__title-month')
+      .textContent.trim()
+      .replace('  ', ' ')
+    const parsedDate = parse(currentMonth, 'MMMM yyyy', new Date(), {
+      locale: fr
+    })
+    const formattedDate = format(parsedDate, 'yyyy-MM')
+    for (const billInfos of billsInfos) {
+      if (billInfos.dateSoin.includes(formattedDate)) {
+        monthReimbursments.push(billInfos)
+      }
+    }
+    return monthReimbursments
+  }
 }
 
 const connector = new LaMutuelleGeneraleContentScript()
 connector
   .init({
-    additionalExposedMethodsNames: ['checkInterceptions', 'getIdentity']
+    additionalExposedMethodsNames: [
+      'checkInterceptions',
+      'getIdentity',
+      'findReimbursments',
+      'getDetails',
+      'getBill'
+    ]
   })
   .catch(err => {
     log.warn(err)
