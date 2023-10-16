@@ -1,13 +1,14 @@
 import { ContentScript } from 'cozy-clisk/dist/contentscript'
 import Minilog from '@cozy/minilog'
 import waitFor, { TimeoutError } from 'p-wait-for'
-import { parse, format } from 'date-fns'
+import { parse, format, differenceInMonths } from 'date-fns'
 import { fr } from 'date-fns/locale'
 const log = Minilog('ContentScript')
 Minilog.enable('lamutuellegeneraleCCC')
 
 // const baseUrl = 'https://www.lamutuellegenerale.fr/'
 const loginFormUrl = 'https://adherent.lamutuellegenerale.fr/'
+let FORCE_FETCH_ALL = false
 
 const personnalInfos = []
 const foundBills = []
@@ -133,7 +134,7 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
       // Sometimes the konnector didn't set the userAgent properly the first time
       // So far, retrying and reloading seems to resolve this issue
       await this.setUserAgent()
-      await this.runInWorkerUntilTrue({ method: 'checkUserAgentReload' })
+      await this.runInWorker('checkUserAgentReload')
     }
     if (!account) {
       await this.ensureNotAuthenticated()
@@ -173,7 +174,7 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
   }
   async checkUserAgentReload() {
     this.log('info', '📍️ checkUserAgentReload starts')
-    await window.location.reload()
+    window.location.reload()
     await waitFor(
       () => {
         const isConnected = Boolean(
@@ -270,7 +271,22 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
   }
 
   async fetch(context) {
-    this.log('info', '🤖 fetch')
+    this.log('info', '🤖 Starting fetch')
+    const { trigger } = context
+    // force fetch all data (the long way) when last trigger execution is older than 30 days
+    // or when the last job was an error
+    const isLastJobError =
+      trigger.current_state?.last_failure > trigger.current_state?.last_success
+    const hasLastExecution = Boolean(trigger.current_state?.last_execution)
+    const distanceInDays = getDateDistanceInDays(
+      trigger.current_state?.last_execution
+    )
+    if (distanceInDays >= 30 || !hasLastExecution || isLastJobError) {
+      this.log('debug', `isLastJobError: ${isLastJobError}`)
+      this.log('debug', `distanceInDays: ${distanceInDays}`)
+      this.log('debug', `hasLastExecution: ${hasLastExecution}`)
+      FORCE_FETCH_ALL = true
+    }
     if (this.store.userCredentials) {
       this.log('info', 'Saving credentials ...')
       await this.saveCredentials(this.store.userCredentials)
@@ -284,14 +300,7 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
       qualificationLabel: 'other_health_document'
     })
     await this.navigateToBillsPage()
-    let numberOfMonths = await this.evaluateInWorker(
-      function getNumberOfMonths() {
-        const numberfMonthsBlocks = document.querySelectorAll(
-          'app-refunds-list-block'
-        ).length
-        return numberfMonthsBlocks
-      }
-    )
+    let numberOfMonths = await this.runInWorker('getNumberOfMonths',FORCE_FETCH_ALL, trigger)
     // Only for dev purppose
     // numberOfMonths = 3
     for (let i = 0; i < numberOfMonths; i++) {
@@ -502,6 +511,29 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
     return attestation
   }
 
+  async getNumberOfMonths(fetchAll, trigger) {
+    this.log('info', '📍️ getNumberOfMonths starts')
+    if (!fetchAll) {
+      const numberOfMonths = this.getNumberOfMonthsToFetch(
+        trigger.current_state?.last_execution
+      )
+      return numberOfMonths
+    }
+    const numberOfMonthsBlocks = document.querySelectorAll(
+      'app-refunds-list-block'
+    ).length
+    return numberOfMonthsBlocks
+  }
+
+  getNumberOfMonthsToFetch(lastExecution) {
+    this.log('info', '📍️ getNumberOfMonthsToFetch starts')
+    const dateToCheck = new Date(lastExecution)
+    const difference = differenceInMonths(new Date(), dateToCheck)
+    // Adding one her ensures we still look for the current month
+    // in case it have been filled with more bills since last execution
+    return difference + 1
+  }
+
   async findReimbursments(i) {
     this.log('info', '📍️ findReimbursments starts')
     const billsInfos = foundBills[0].remboursements
@@ -608,6 +640,8 @@ connector
       'checkInterceptions',
       'getIdentity',
       'getAttestation',
+      'getNumberOfMonths',
+      'getNumberOfMonthsToFetch',
       'findReimbursments',
       'getDetails',
       'getBill'
@@ -616,3 +650,9 @@ connector
   .catch(err => {
     log.warn(err)
   })
+
+function getDateDistanceInDays(dateString) {
+  const distanceMs = Date.now() - new Date(dateString).getTime()
+  const days = 1000 * 60 * 60 * 24
+  return Math.floor(distanceMs / days)
+}
