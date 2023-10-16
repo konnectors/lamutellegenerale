@@ -1,6 +1,6 @@
 import { ContentScript } from 'cozy-clisk/dist/contentscript'
 import Minilog from '@cozy/minilog'
-import waitFor from 'p-wait-for'
+import waitFor, { TimeoutError } from 'p-wait-for'
 import { parse, format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 const log = Minilog('ContentScript')
@@ -13,6 +13,7 @@ const personnalInfos = []
 const foundBills = []
 const foundBillsDetails = []
 const base64Pdfs = []
+const attestationPdf = []
 var openProxied = window.XMLHttpRequest.prototype.open
 window.XMLHttpRequest.prototype.open = function () {
   var originalResponse = this
@@ -21,6 +22,16 @@ window.XMLHttpRequest.prototype.open = function () {
       if (originalResponse.readyState === 4) {
         const jsonInfos = JSON.parse(originalResponse.responseText)
         personnalInfos.push(jsonInfos)
+      }
+    })
+    return openProxied.apply(this, [].slice.call(arguments))
+  }
+  // eslint-disable-next-line no-useless-escape
+  if (arguments[1].match(/\/mesadhesions\/(\d+)\/cartetppdf/g)) {
+    originalResponse.addEventListener('readystatechange', function () {
+      if (originalResponse.readyState === 4) {
+        const jsonAttestation = JSON.parse(originalResponse.responseText)
+        attestationPdf.push(jsonAttestation)
       }
     })
     return openProxied.apply(this, [].slice.call(arguments))
@@ -34,7 +45,7 @@ window.XMLHttpRequest.prototype.open = function () {
     })
     return openProxied.apply(this, [].slice.call(arguments))
   }
-  // eslint-disable-next-line no-useless-escape, prettier/prettier
+  // eslint-disable-next-line no-useless-escape
   if (arguments[1].match(/\/mesremboursements\/\d+/g)) {
     originalResponse.addEventListener('readystatechange', function () {
       if (originalResponse.readyState === 4) {
@@ -59,53 +70,39 @@ window.XMLHttpRequest.prototype.open = function () {
 class LaMutuelleGeneraleContentScript extends ContentScript {
   onWorkerReady() {
     this.log('info', 'onWorkerReady starts')
-    window.addEventListener('DOMContentLoaded', () => {
-      this.log('info', 'DOMContentLoaded OK')
-      const form = document.querySelector('form')
-      if (form) {
-        form.addEventListener('submit', () => {
-          this.log('info', 'Form submit detected, sending credentials')
-          const password = document.querySelector('#password')?.value
-          const login = document.querySelector('#username')?.value
-          this.bridge.emit('workerEvent', {
-            event: 'loginSubmit',
-            payload: { login, password }
-          })
-        })
-      }
-      const error = document.querySelector('span[id*="error-element-"]')
-      if (error) {
+    const form = document.querySelector('form')
+    const loginError = document.querySelector('span[id*="error-element-"]')
+    if (form) {
+      form.addEventListener('submit', () => {
+        this.log('info', 'Form submit detected, sending credentials')
+        const password = document.querySelector('#password')?.value
+        const login = document.querySelector('#username')?.value
         this.bridge.emit('workerEvent', {
-          event: 'loginError',
-          payload: { msg: error.innerHTML }
+          event: 'loginSubmit',
+          payload: { login, password }
         })
-      }
-    })
+      })
+    }
+    if (loginError) {
+      this.bridge.emit('workerEvent', {
+        event: 'loginError',
+        payload: { msg: loginError.innerHTML }
+      })
+    }
   }
 
-  onWorkerEvent({ event, payload }) {
+  async onWorkerEvent({ event, payload }) {
     this.log('info', 'onWorkerEvent starts')
     if (event === 'loginSubmit') {
       this.log('info', 'received loginSubmit, blocking user interactions')
       this.blockWorkerInteractions()
-      // this.log(
-      //   'info',
-      //   `{event payload} : ${JSON.stringify({ event, payload })}`
-      // )
       const { login, password } = payload || {}
       if (login && password) {
         // On this website you could use your adherent number or your mail.
         // We just follow de convention to save an "email"
         // into the keyChain so there is no confusion when manipulating this credentials later
         const email = login
-        // this.log(
-        //   'info',
-        //   `workerEvent {email, password} : ${JSON.stringify({
-        //     email,
-        //     password
-        //   })}`
-        // )
-        this.saveCredentials({ email, password })
+        this.store.userCredentials = { email, password }
       }
     } else if (event === 'loginError') {
       this.log(
@@ -121,18 +118,23 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
     await this.goto(loginFormUrl)
     await Promise.race([
       this.waitForElementInWorker('#password'),
-      this.waitForElementInWorker('a[analyticsbuttonlabel="Déconnexion"]')
+      this.waitForElementInWorker('a[analyticsbuttonlabel="Déconnexion"]'),
+      this.waitForElementInWorker('#older_browsers')
     ])
   }
 
   async ensureAuthenticated({ account }) {
     this.log('info', '🤖 ensureAuthenticated')
-    this.bridge.addEventListener('workerEvent', this.onWorkerEvent.bind(this))
     // Mandatory, or else the loginForm wont display saying the browser's version is not appropriate
-    await this.bridge.call(
-      'setUserAgent',
-      'Mozilla/5.0 (Linux; Android 11; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Mobile Safari/537.36'
-    )
+    await this.setUserAgent()
+    this.bridge.addEventListener('workerEvent', this.onWorkerEvent.bind(this))
+    await this.navigateToLoginForm()
+    if (await this.isElementInWorker('#older_browsers')) {
+      // Sometimes the konnector didn't set the userAgent properly the first time
+      // So far, retrying and reloading seems to resolve this issue
+      await this.setUserAgent()
+      await this.runInWorkerUntilTrue({ method: 'checkUserAgentReload' })
+    }
     if (!account) {
       await this.ensureNotAuthenticated()
     }
@@ -141,17 +143,67 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
     }
     const authenticated = await this.runInWorker('checkAuthenticated')
     if (!authenticated) {
-      this.log('info', 'Not authenticated')
-      await this.showLoginFormAndWaitForAuthentication()
+      const credentials = await this.getCredentials()
+      if (credentials) {
+        try {
+          await this.autoLogin(credentials)
+          this.log('info', 'Auto login successful')
+        } catch (err) {
+          this.log(
+            'info',
+            'Something went wrong with auto login, letting user log in '
+          )
+          await this.showLoginFormAndWaitForAuthentication()
+        }
+      } else {
+        this.log('info', 'Not authenticated')
+        await this.showLoginFormAndWaitForAuthentication()
+      }
     }
     this.log('info', 'Authenticated, unblocking worker interactions')
     this.unblockWorkerInteractions()
     return true
   }
+  async setUserAgent() {
+    this.log('info', '📍️ setUserAgent starts')
+    await this.bridge.call(
+      'setUserAgent',
+      'Mozilla/5.0 (Linux; Android 11; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Mobile Safari/537.36'
+    )
+  }
+  async checkUserAgentReload() {
+    this.log('info', '📍️ checkUserAgentReload starts')
+    await window.location.reload()
+    await waitFor(
+      () => {
+        const isConnected = Boolean(
+          document.querySelector('a[analyticsbuttonlabel="Déconnexion"]')
+        )
+        const isForm = Boolean(document.querySelector('#password'))
+        if (isForm || isConnected) {
+          this.log('info', 'userAgent reset was successfull')
+          return true
+        }
+        return false
+      },
+      {
+        interval: 1000,
+        timeout: {
+          milliseconds: 30 * 1000,
+          message: new TimeoutError(
+            'Reload after olderBrowser error failed, check the code or update userAgent'
+          )
+        }
+      }
+    )
+    return true
+  }
 
   async ensureNotAuthenticated() {
     this.log('info', '🤖 ensureNotAuthenticated')
-    await this.navigateToLoginForm()
+    if (!(await this.isElementInWorker('#password'))) {
+      await this.navigateToLoginForm()
+    }
     const authenticated = await this.runInWorker('checkAuthenticated')
     if (!authenticated) {
       return true
@@ -167,6 +219,25 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
     return Boolean(
       document.querySelector('a[analyticsbuttonlabel="Déconnexion"]')
     )
+  }
+
+  async autoLogin(credentials) {
+    this.log('info', '📍️ autoLogin starts')
+    const usernameInputSelector = '#username'
+    const passwordInputSelector = '#password'
+    const submitButton = 'button[data-action-button-primary="true"]'
+    await this.waitForElementInWorker(usernameInputSelector)
+    this.log('debug', 'Fill email field')
+    await this.runInWorker('fillText', usernameInputSelector, credentials.email)
+    await this.waitForElementInWorker(passwordInputSelector)
+    this.log('debug', 'Fill password field')
+    await this.runInWorker(
+      'fillText',
+      passwordInputSelector,
+      credentials.password
+    )
+    await this.runInWorker('click', submitButton)
+    await this.waitForElementInWorker('a[analyticsbuttonlabel="Déconnexion"]')
   }
 
   async showLoginFormAndWaitForAuthentication() {
@@ -200,15 +271,20 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
 
   async fetch(context) {
     this.log('info', '🤖 fetch')
-    await this.clickAndWait(
-      'a[href="/remboursements"]',
-      'app-refunds-list-block'
-    )
-    await this.runInWorkerUntilTrue({
-      method: 'checkInterceptions',
-      args: ['bills']
+    if (this.store.userCredentials) {
+      this.log('info', 'Saving credentials ...')
+      await this.saveCredentials(this.store.userCredentials)
+    }
+    await this.navigateToAttestationPage()
+    const attestation = await this.runInWorker('getAttestation')
+    await this.saveFiles([attestation], {
+      context,
+      contentType: 'application/pdf',
+      fileIdAttributes: ['filename'],
+      qualificationLabel: 'other_health_document'
     })
-    const numberOfMonths = await this.evaluateInWorker(
+    await this.navigateToBillsPage()
+    let numberOfMonths = await this.evaluateInWorker(
       function getNumberOfMonths() {
         const numberfMonthsBlocks = document.querySelectorAll(
           'app-refunds-list-block'
@@ -216,6 +292,8 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
         return numberfMonthsBlocks
       }
     )
+    // Only for dev purppose
+    // numberOfMonths = 3
     for (let i = 0; i < numberOfMonths; i++) {
       const { monthReimbursments, dataUri } = await this.runInWorker(
         'findReimbursments',
@@ -246,7 +324,7 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
   }
 
   async checkInterceptions(option) {
-    this.log('info', '📍️ checkInterceptions starts')
+    this.log('info', `📍️ checkInterceptions for ${option} starts`)
     await waitFor(
       () => {
         if (option === 'personnalInfos') {
@@ -261,14 +339,39 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
         if (option === 'pdf') {
           return Boolean(base64Pdfs.length > 0)
         }
+        if (option === 'attestation') {
+          return Boolean(attestationPdf.length > 0)
+        }
       },
       {
         interval: 1000,
-        timeout: 30 * 1000
+        timeout: {
+          milliseconds: 30 * 1000,
+          message: new TimeoutError(
+            `checkInterception for ${option} timed out after 30000ms, verify XHR interceptions`
+          )
+        }
       }
     )
     this.log('info', `Interception for ${option} - OK`)
     return true
+  }
+
+  async navigateToAttestationPage() {
+    this.log('info', '📍️ navigateToAttestationPage starts')
+    await this.clickAndWait('a[href="/accueil"]', '#guider_pdf')
+  }
+
+  async navigateToBillsPage() {
+    this.log('info', '📍️ navigateToBillsPage starts')
+    await this.clickAndWait(
+      'a[href="/remboursements"]',
+      'app-refunds-list-block'
+    )
+    await this.runInWorkerUntilTrue({
+      method: 'checkInterceptions',
+      args: ['bills']
+    })
   }
 
   async getIdentity() {
@@ -376,6 +479,29 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
     return phone
   }
 
+  async getAttestation() {
+    this.log('info', '📍️ getAttestation starts')
+    document.querySelector('#guider_pdf').click()
+    await this.checkInterceptions('attestation')
+    const attestation = {
+      filename: `CarteAdherent_LaMutuelleGenerale.pdf`,
+      dataUri: `data:application/pdf;base64,${attestationPdf[0].carte}`,
+      shouldReplaceFile: () => true,
+      date: new Date(),
+      vendor: 'La Mutuelle Générale',
+      filAttributes: {
+        metadata: {
+          contentAuthor: 'lamutuellegenerale',
+          issueDate: new Date(),
+          datetime: new Date(),
+          datetimeLabel: 'issuDate',
+          carbonCopy: true
+        }
+      }
+    }
+    return attestation
+  }
+
   async findReimbursments(i) {
     this.log('info', '📍️ findReimbursments starts')
     const billsInfos = foundBills[0].remboursements
@@ -478,8 +604,10 @@ const connector = new LaMutuelleGeneraleContentScript()
 connector
   .init({
     additionalExposedMethodsNames: [
+      'checkUserAgentReload',
       'checkInterceptions',
       'getIdentity',
+      'getAttestation',
       'findReimbursments',
       'getDetails',
       'getBill'
