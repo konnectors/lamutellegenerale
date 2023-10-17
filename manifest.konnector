@@ -1,35 +1,49 @@
 {
-  "version": "2.0.0",
-  "name": "La Mutuelle Générale",
+  "version": "1.3.0",
+  "name": "La mutuelle générale",
   "type": "konnector",
   "language": "node",
   "icon": "icon.svg",
   "slug": "lamutuellegenerale",
   "source": "git@github.com:konnectors/lamutuellegenerale.git",
   "editor": "Cozy",
-  "vendor_link": "https://www.lamutuellegenerale.fr/",
+  "vendor_link": "https://mon-espace-adherent.lamutuellegenerale.fr",
   "categories": [
     "insurance"
   ],
-  "fields": { },
-  "clientSide": true,
-  "langs": [
-    "fr"
-  ],
-  "folders": [
-    {
-      "defaultDir": "$administrative/$konnector/$account"
+  "fields": {
+    "login": {
+      "type": "text"
+    },
+    "password": {
+      "type": "password"
+    },
+    "advancedFields": {
+      "folderPath": {
+        "advanced": true,
+        "isRequired": false
+      }
     }
+  },
+  "data_types": [
+    "bill"
   ],
+  "screenshots": [],
   "permissions": {
+    "bank operations": {
+      "type": "io.cozy.bank.operations"
+    },
     "bills": {
       "type": "io.cozy.bills"
     },
     "files": {
       "type": "io.cozy.files"
     },
-    "carbon_copy": {
-      "type": "io.cozy.certified.carbon_copy"
+    "accounts": {
+      "type": "io.cozy.accounts",
+      "verbs": [
+        "GET"
+      ]
     },
     "identities": {
       "type": "io.cozy.identities"
@@ -39,13 +53,17 @@
     "name": "Cozy Cloud",
     "url": "https://cozy.io"
   },
+  "langs": [
+    "fr",
+    "en"
+  ],
   "locales": {
     "fr": {
-      "short_description": "Récupère vos factures La mutuelle générale.",
-      "long_description": "Récupère vos factures La mutuelle générale.",
+      "short_description": "Récupère vos relevés de remboursement",
+      "long_description": "Récupère les relévés de remboursement de votre assurance santé complémentaire.\n\nA noter : Vous devez avoir souscrit au service décompte en ligne.",
       "permissions": {
-        "carboncopy": {
-          "description": "Utilisé pour certifier que vos fichiers sont copie conforme avec les documents d'origine"
+        "bank operations": {
+          "description": "Utilisé pour relier les factures à des operations bancaires"
         },
         "bills": {
           "description": "Utilisé pour sauver les données des factures"
@@ -53,17 +71,20 @@
         "files": {
           "description": "Utilisé pour sauvegarder les factures"
         },
+        "accounts": {
+          "description": "Utilisé pour obtenir les données du compte"
+        },
         "identities": {
-          "description": "Utilisé pour sauvegarder l'identité de l'utilisateur"
+          "description": "Utilisé pour sauvegarder votre identité"
         }
       }
     },
     "en": {
-      "short_description": "Fetch a list of La mutuelle générale invoices.",
-      "long_description": "Fetch a list of La mutuelle générale invoices.",
+      "short_description": "Fetch your reimbursment statement",
+      "long_description": "Fetches your reimbursement statements for your complementary health insurance.\n\nNote : You must have subscribed to the pdf bills service.",
       "permissions": {
-        "carboncopy": {
-          "description": "Required for carbon copy documents"
+        "bank operations": {
+          "description": "Required to link bank operations to bills"
         },
         "bills": {
           "description": "Required to save the bills data"
@@ -71,19 +92,19 @@
         "files": {
           "description": "Required to save the bills"
         },
+        "accounts": {
+          "description": "Required to get the account's data"
+        },
         "identities": {
-          "description": "Required to save the user identity"
+          "description": "Required to save your identity"
         }
       }
     }
   },
-  "qualification_labels": [
-    "health_invoice",
-    "other_health_document"
-  ],
   "features": [
-    "METADATA_DEDUP",
-    "CARBON_COPY",
-    "DOC_QUALIFICATION_V2"
-  ]
+    "IDENTITY",
+    "HEALTH"
+  ],
+  "banksTransactionRegExp": "\\bla mutuelle gen",
+  "manifest_version": "2"
 }
