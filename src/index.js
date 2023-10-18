@@ -134,7 +134,10 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
       // Sometimes the konnector didn't set the userAgent properly the first time
       // So far, retrying and reloading seems to resolve this issue
       await this.setUserAgent()
-      await this.runInWorker('checkUserAgentReload')
+      await this.evaluateInWorker(function reloadWindow() {
+        window.location.reload()
+      })
+      await this.runInWorkerUntilTrue({ method: 'checkUserAgentReload' })
     }
     if (!account) {
       await this.ensureNotAuthenticated()
@@ -174,7 +177,6 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
   }
   async checkUserAgentReload() {
     this.log('info', '📍️ checkUserAgentReload starts')
-    window.location.reload()
     await waitFor(
       () => {
         const isConnected = Boolean(
@@ -300,7 +302,11 @@ class LaMutuelleGeneraleContentScript extends ContentScript {
       qualificationLabel: 'other_health_document'
     })
     await this.navigateToBillsPage()
-    let numberOfMonths = await this.runInWorker('getNumberOfMonths',FORCE_FETCH_ALL, trigger)
+    let numberOfMonths = await this.runInWorker(
+      'getNumberOfMonths',
+      FORCE_FETCH_ALL,
+      trigger
+    )
     // Only for dev purppose
     // numberOfMonths = 3
     for (let i = 0; i < numberOfMonths; i++) {
